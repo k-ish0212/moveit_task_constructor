@@ -13,9 +13,6 @@
 	<build_depend>eigen</build_depend>
 
 	<depend>geometry_msgs</depend>
-	<depend>roscpp</depend>
-	<depend>rviz</depend>
-	<depend>tf2_eigen</depend>
 	<depend>moveit_common</depend>
 	<depend>rclcpp</depend>
 	<depend>rviz2</depend>

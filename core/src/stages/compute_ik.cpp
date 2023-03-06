@@ -104,8 +104,8 @@ namespace {
 // ??? TODO: provide callback methods in PlanningScene class / probably not very useful here though...
 // TODO: move into MoveIt core, lift active_components_only_ from fcl to common interface
 bool isTargetPoseCollidingInEEF(const planning_scene::PlanningSceneConstPtr& scene,
-                                robot_state::RobotState& robot_state, Eigen::Isometry3d pose,
-                                const robot_model::LinkModel* link, const robot_model::JointModelGroup* jmg = nullptr,
+                                moveit::core::RobotState& robot_state, Eigen::Isometry3d pose,
+                                const moveit::core::LinkModel* link,
                                 collision_detection::CollisionResult* collision_result = nullptr) {
 	// consider all rigidly connected parent links as well
 	const moveit::core::LinkModel* parent = moveit::core::RobotModel::getRigidlyConnectedParentLinkModel(link);
@@ -136,8 +136,8 @@ bool isTargetPoseCollidingInEEF(const planning_scene::PlanningSceneConstPtr& sce
 	collision_detection::CollisionRequest req;
 	collision_detection::CollisionResult result;
 	req.contacts = (collision_result != nullptr);
-	if (jmg)
-		req.group_name = jmg->getName();
+	// if (jmg)
+	// 	req.group_name = jmg->getName();
 	collision_detection::CollisionResult& res = collision_result ? *collision_result : result;
 	scene->checkCollision(req, res, robot_state, acm);
 	return res.collision;
@@ -318,7 +318,7 @@ void ComputeIK::compute() {
 	collision_detection::CollisionResult collisions;
 	moveit::core::RobotState sandbox_state{ scene->getCurrentState() };
 	bool colliding =
-	    !ignore_collisions && isTargetPoseCollidingInEEF(scene, sandbox_state, target_pose, link, jmg, &collisions);
+	    !ignore_collisions && isTargetPoseCollidingInEEF(scene, sandbox_state, target_pose, link, &collisions);
 
 	// frames at target pose and ik frame
 	std::deque<visualization_msgs::msg::Marker> frame_markers;

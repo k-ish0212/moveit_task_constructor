@@ -16,8 +16,6 @@
 #else
 #include <tf2_eigen/tf2_eigen.h>
 #endif
-#include <tf2_msgs/TF2Error.h>
-#include <ros/console.h>
 
 static const rclcpp::Logger LOGGER = rclcpp::get_logger("moveit_task_constructor_visualization.marker_visualization");
 

@@ -17,25 +17,25 @@ find_package(tf2_eigen REQUIRED)
 find_package(visualization_msgs REQUIRED)
 
 option(MOVEIT_CI_WARNINGS "Enable all warnings used by CI" OFF) # We use our own set of warnings
-moveit_build_options()
+# moveit_build_options()
 
-catkin_python_setup()
+# catkin_python_setup()
 
-catkin_package(
-	LIBRARIES
-		${PROJECT_NAME}
-		${PROJECT_NAME}_stages
-		${PROJECT_NAME}_stage_plugins
-	INCLUDE_DIRS
-		include
-	CATKIN_DEPENDS
-		geometry_msgs
-		moveit_core
-		moveit_task_constructor_msgs
-		rviz_marker_tools
-		visualization_msgs
-	CFG_EXTRAS pybind11.cmake
-)
+# catkin_package(
+# 	LIBRARIES
+# 		${PROJECT_NAME}
+# 		${PROJECT_NAME}_stages
+# 		${PROJECT_NAME}_stage_plugins
+# 	INCLUDE_DIRS
+# 		include
+# 	CATKIN_DEPENDS
+# 		geometry_msgs
+# 		moveit_core
+# 		moveit_task_constructor_msgs
+# 		rviz_marker_tools
+# 		visualization_msgs
+# 	CFG_EXTRAS pybind11.cmake
+# )
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)

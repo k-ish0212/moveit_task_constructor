@@ -14,9 +14,6 @@ set(THIS_PACKAGE_INCLUDE_DEPENDS
 	tf2_eigen
 	urdfdom_headers
 	visualization_msgs
-	roscpp
-	rviz
-	tf2_eigen
 )
 
 foreach(dependency IN ITEMS ${THIS_PACKAGE_INCLUDE_DEPENDS})
