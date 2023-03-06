@@ -43,15 +43,21 @@
 #include <moveit/robot_state/robot_state.h>
 
 #include <Eigen/Geometry>
+#if __has_include(<tf2_eigen/tf2_eigen.hpp>)
+#include <tf2_eigen/tf2_eigen.hpp>
+#else
 #include <tf2_eigen/tf2_eigen.h>
+#endif
 #include <chrono>
 #include <functional>
 #include <iterator>
-#include <ros/console.h>
+#include <rclcpp/logging.hpp>
 
 namespace moveit {
 namespace task_constructor {
 namespace stages {
+
+static const rclcpp::Logger LOGGER = rclcpp::get_logger("ComputeIK");
 
 ComputeIK::ComputeIK(const std::string& name, Stage::pointer&& child) : WrapperBase(name, std::move(child)) {
 	auto& p = properties();
@@ -64,19 +70,19 @@ ComputeIK::ComputeIK(const std::string& name, Stage::pointer&& child) : WrapperB
 	                  "minimum distance between seperate IK solutions for the same target");
 
 	// ik_frame and target_pose are read from the interface
-	p.declare<geometry_msgs::PoseStamped>("ik_frame", "frame to be moved towards goal pose");
-	p.declare<geometry_msgs::PoseStamped>("target_pose", "goal pose for ik frame");
+	p.declare<geometry_msgs::msg::PoseStamped>("ik_frame", "frame to be moved towards goal pose");
+	p.declare<geometry_msgs::msg::PoseStamped>("target_pose", "goal pose for ik frame");
 }
 
 void ComputeIK::setIKFrame(const Eigen::Isometry3d& pose, const std::string& link) {
-	geometry_msgs::PoseStamped pose_msg;
+	geometry_msgs::msg::PoseStamped pose_msg;
 	pose_msg.header.frame_id = link;
 	pose_msg.pose = tf2::toMsg(pose);
 	setIKFrame(pose_msg);
 }
 
 void ComputeIK::setTargetPose(const Eigen::Isometry3d& pose, const std::string& frame) {
-	geometry_msgs::PoseStamped pose_msg;
+	geometry_msgs::msg::PoseStamped pose_msg;
 	pose_msg.header.frame_id = frame;
 	pose_msg.pose = tf2::toMsg(pose);
 	setTargetPose(pose_msg);
@@ -102,7 +108,7 @@ bool isTargetPoseCollidingInEEF(const planning_scene::PlanningSceneConstPtr& sce
                                 const robot_model::LinkModel* link, const robot_model::JointModelGroup* jmg = nullptr,
                                 collision_detection::CollisionResult* collision_result = nullptr) {
 	// consider all rigidly connected parent links as well
-	const robot_model::LinkModel* parent = robot_model::RobotModel::getRigidlyConnectedParentLinkModel(link);
+	const moveit::core::LinkModel* parent = moveit::core::RobotModel::getRigidlyConnectedParentLinkModel(link);
 	if (parent != link)  // transform pose into pose suitable to place parent
 		pose = pose * robot_state.getGlobalLinkTransform(link).inverse() * robot_state.getGlobalLinkTransform(parent);
 
@@ -116,10 +122,10 @@ bool isTargetPoseCollidingInEEF(const planning_scene::PlanningSceneConstPtr& sce
 	while (parent) {
 		pending_links.push_back(&parent->getName());
 		link = parent;
-		const robot_model::JointModel* joint = link->getParentJointModel();
+		const moveit::core::JointModel* joint = link->getParentJointModel();
 		parent = joint->getParentLinkModel();
 
-		if (joint->getType() != robot_model::JointModel::FIXED) {
+		if (joint->getType() != moveit::core::JointModel::FIXED) {
 			for (const std::string* name : pending_links)
 				acm.setDefaultEntry(*name, true);
 			pending_links.clear();
@@ -249,21 +255,21 @@ void ComputeIK::compute() {
 	std::string msg;
 
 	if (!validateEEF(props, robot_model, eef_jmg, &msg)) {
-		ROS_WARN_STREAM_NAMED("ComputeIK", msg);
+		RCLCPP_WARN_STREAM(LOGGER, msg);
 		return;
 	}
 	if (!validateGroup(props, robot_model, eef_jmg, jmg, &msg)) {
-		ROS_WARN_STREAM_NAMED("ComputeIK", msg);
+		RCLCPP_WARN_STREAM(LOGGER, msg);
 		return;
 	}
 	if (!eef_jmg && !jmg) {
-		ROS_WARN_STREAM_NAMED("ComputeIK", "Neither eef nor group are well defined");
+		RCLCPP_WARN_STREAM(LOGGER, "Neither eef nor group are well defined");
 		return;
 	}
 	properties().property("timeout").setDefaultValue(jmg->getDefaultIKTimeout());
 
 	// extract target_pose
-	geometry_msgs::PoseStamped target_pose_msg = props.get<geometry_msgs::PoseStamped>("target_pose");
+	geometry_msgs::msg::PoseStamped target_pose_msg = props.get<geometry_msgs::msg::PoseStamped>("target_pose");
 	if (target_pose_msg.header.frame_id.empty())  // if not provided, assume planning frame
 		target_pose_msg.header.frame_id = scene->getPlanningFrame();
 
@@ -271,8 +277,7 @@ void ComputeIK::compute() {
 	tf2::fromMsg(target_pose_msg.pose, target_pose);
 	if (target_pose_msg.header.frame_id != scene->getPlanningFrame()) {
 		if (!scene->knowsFrameTransform(target_pose_msg.header.frame_id)) {
-			ROS_WARN_STREAM_NAMED("ComputeIK",
-			                      "Unknown reference frame for target pose: " << target_pose_msg.header.frame_id);
+			RCLCPP_WARN_STREAM(LOGGER, "Unknown reference frame for target pose: " << target_pose_msg.header.frame_id);
 			return;
 		}
 		// transform target_pose w.r.t. planning frame
@@ -280,25 +285,25 @@ void ComputeIK::compute() {
 	}
 
 	// determine IK link from ik_frame
-	const robot_model::LinkModel* link = nullptr;
-	geometry_msgs::PoseStamped ik_pose_msg;
+	const moveit::core::LinkModel* link = nullptr;
+	geometry_msgs::msg::PoseStamped ik_pose_msg;
 	const boost::any& value = props.get("ik_frame");
 	if (value.empty()) {  // property undefined
 		//  determine IK link from eef/group
 		if (!(link = eef_jmg ? robot_model->getLinkModel(eef_jmg->getEndEffectorParentGroup().second) :
-		                       jmg->getOnlyOneEndEffectorTip())) {
-			ROS_WARN_STREAM_NAMED("ComputeIK", "Failed to derive IK target link");
+                             jmg->getOnlyOneEndEffectorTip())) {
+			RCLCPP_WARN_STREAM(LOGGER, "Failed to derive IK target link");
 			return;
 		}
 		ik_pose_msg.header.frame_id = link->getName();
 		ik_pose_msg.pose.orientation.w = 1.0;
 	} else {
-		ik_pose_msg = boost::any_cast<geometry_msgs::PoseStamped>(value);
+		ik_pose_msg = boost::any_cast<geometry_msgs::msg::PoseStamped>(value);
 		Eigen::Isometry3d ik_pose;
 		tf2::fromMsg(ik_pose_msg.pose, ik_pose);
 
 		if (!scene->getCurrentState().knowsFrameTransform(ik_pose_msg.header.frame_id)) {
-			ROS_WARN_STREAM_NAMED("ComputeIK", "ik frame unknown in robot: '" << ik_pose_msg.header.frame_id << "'");
+			RCLCPP_WARN_STREAM(LOGGER, "ik frame unknown in robot: '" << ik_pose_msg.header.frame_id << "'");
 			return;
 		}
 		ik_pose = scene->getCurrentState().getFrameTransform(ik_pose_msg.header.frame_id) * ik_pose;
@@ -311,18 +316,18 @@ void ComputeIK::compute() {
 
 	// validate placed link for collisions
 	collision_detection::CollisionResult collisions;
-	robot_state::RobotState sandbox_state{ scene->getCurrentState() };
+	moveit::core::RobotState sandbox_state{ scene->getCurrentState() };
 	bool colliding =
 	    !ignore_collisions && isTargetPoseCollidingInEEF(scene, sandbox_state, target_pose, link, jmg, &collisions);
 
 	// frames at target pose and ik frame
-	std::deque<visualization_msgs::Marker> frame_markers;
+	std::deque<visualization_msgs::msg::Marker> frame_markers;
 	rviz_marker_tools::appendFrame(frame_markers, target_pose_msg, 0.1, "target frame");
 	rviz_marker_tools::appendFrame(frame_markers, ik_pose_msg, 0.1, "ik frame");
 	// end-effector markers
-	std::deque<visualization_msgs::Marker> eef_markers;
+	std::deque<visualization_msgs::msg::Marker> eef_markers;
 	// visualize placed end-effector
-	auto appender = [&eef_markers](visualization_msgs::Marker& marker, const std::string& /*name*/) {
+	auto appender = [&eef_markers](visualization_msgs::msg::Marker& marker, const std::string& /*name*/) {
 		marker.ns = "ik target";
 		marker.color.a *= 0.5;
 		eef_markers.push_back(marker);
@@ -349,7 +354,7 @@ void ComputeIK::compute() {
 	std::vector<double> compare_pose;
 	const std::string& compare_pose_name = props.get<std::string>("default_pose");
 	if (!compare_pose_name.empty()) {
-		robot_state::RobotState compare_state(robot_model);
+		moveit::core::RobotState compare_state(robot_model);
 		compare_state.setToDefaultValues(jmg, compare_pose_name);
 		compare_state.copyJointGroupPositions(jmg, compare_pose);
 	} else
@@ -359,7 +364,7 @@ void ComputeIK::compute() {
 
 	IKSolutions ik_solutions;
 	auto is_valid = [scene, ignore_collisions, min_solution_distance,
-	                 &ik_solutions](robot_state::RobotState* state, const robot_model::JointModelGroup* jmg,
+	                 &ik_solutions](moveit::core::RobotState* state, const moveit::core::JointModelGroup* jmg,
 	                                const double* joint_positions) {
 		for (const auto& sol : ik_solutions) {
 			if (jmg->distance(joint_positions, sol.joint_positions.data()) < min_solution_distance)
@@ -417,7 +422,7 @@ void ComputeIK::compute() {
 				solution.markAsFailure(ss.str());
 			}
 			// set scene's robot state
-			robot_state::RobotState& solution_state = solution_scene->getCurrentStateNonConst();
+			moveit::core::RobotState& solution_state = solution_scene->getCurrentStateNonConst();
 			solution_state.setJointGroupPositions(jmg, ik_solutions[i].joint_positions.data());
 			solution_state.update();
 
@@ -446,7 +451,7 @@ void ComputeIK::compute() {
 		std::copy(frame_markers.begin(), frame_markers.end(), std::back_inserter(solution.markers()));
 
 		// ik target link placement
-		std_msgs::ColorRGBA tint_color;
+		std_msgs::msg::ColorRGBA tint_color;
 		tint_color.r = 1.0;
 		tint_color.g = 0.0;
 		tint_color.b = 0.0;

@@ -141,7 +141,8 @@ double PathLength::operator()(const SubTrajectory& s, std::string& /*comment*/) 
 	return path_length;
 }
 
-DistanceToReference::DistanceToReference(const moveit_msgs::RobotState& ref, Mode m, std::map<std::string, double> w)
+DistanceToReference::DistanceToReference(const moveit_msgs::msg::RobotState& ref, Mode m,
+                                         std::map<std::string, double> w)
   : reference(ref), weights(std::move(w)), mode(m) {}
 
 DistanceToReference::DistanceToReference(const std::map<std::string, double>& ref, Mode m,
@@ -243,8 +244,8 @@ double Clearance::operator()(const SubTrajectory& s, std::string& comment) const
 	auto& state_properties{ state->properties() };
 	auto& stage_properties{ s.creator()->properties() };
 	request.group_name = state_properties.hasProperty(group_property) ?
-	                         state_properties.get<std::string>(group_property) :
-	                         stage_properties.get<std::string>(group_property);
+                            state_properties.get<std::string>(group_property) :
+                            stage_properties.get<std::string>(group_property);
 
 	// look at all forbidden collisions involving group_name
 	request.enableGroup(state->scene()->getRobotModel());

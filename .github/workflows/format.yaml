@@ -11,16 +11,13 @@ on:
 jobs:
   pre-commit:
     name: pre-commit
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
         with:
           submodules: recursive
-      - name: Install clang-format-10
-        run: sudo apt-get install clang-format-10
-      - uses: rhaschke/install-catkin_lint-action@v1.0
-        with:
-          distro: noetic
+      - name: Install clang-format-12
+        run: sudo apt-get install clang-format-12
       - uses: pre-commit/action@v3.0.0
         id: precommit
       - name: Upload pre-commit changes

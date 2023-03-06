@@ -8,8 +8,8 @@
 #include <moveit/planning_scene/planning_scene.h>
 #include <moveit/robot_trajectory/robot_trajectory.h>
 
-#include <geometry_msgs/PoseStamped.h>
-#include <geometry_msgs/TwistStamped.h>
+#include <geometry_msgs/msg/pose_stamped.hpp>
+#include <geometry_msgs/msg/twist_stamped.hpp>
 
 #include <gtest/gtest.h>
 
@@ -26,11 +26,12 @@ struct PandaMoveRelative : public testing::Test
 	Task t;
 	stages::MoveRelative* move;
 	PlanningScenePtr scene;
+	rclcpp::Node::SharedPtr node = rclcpp::Node::make_shared("panda_move_relative");
 
 	const JointModelGroup* group;
 
 	PandaMoveRelative() {
-		t.setRobotModel(loadModel());
+		t.setRobotModel(loadModel(node));
 
 		group = t.getRobotModel()->getJointModelGroup("panda_arm");
 
@@ -46,21 +47,21 @@ struct PandaMoveRelative : public testing::Test
 	}
 };
 
-moveit_msgs::AttachedCollisionObject createAttachedObject(const std::string& id) {
-	moveit_msgs::AttachedCollisionObject aco;
+moveit_msgs::msg::AttachedCollisionObject createAttachedObject(const std::string& id) {
+	moveit_msgs::msg::AttachedCollisionObject aco;
 	aco.link_name = "panda_hand";
 	aco.object.header.frame_id = aco.link_name;
 	aco.object.operation = aco.object.ADD;
 	aco.object.id = id;
 	aco.object.primitives.resize(1, [] {
-		shape_msgs::SolidPrimitive p;
+		shape_msgs::msg::SolidPrimitive p;
 		p.type = p.SPHERE;
 		p.dimensions.resize(1);
 		p.dimensions[p.SPHERE_RADIUS] = 0.01;
 		return p;
 	}());
 
-	geometry_msgs::Pose p;
+	geometry_msgs::msg::Pose p;
 	p.position.x = 0.1;
 	p.orientation.w = 1.0;
 	aco.object.pose = p;
@@ -87,7 +88,7 @@ void expect_const_position(const SolutionBaseConstPtr& solution, const std::stri
 
 TEST_F(PandaMoveRelative, cartesianRotateEEF) {
 	move->setDirection([] {
-		geometry_msgs::TwistStamped twist;
+		geometry_msgs::msg::TwistStamped twist;
 		twist.header.frame_id = "world";
 		twist.twist.angular.z = TAU / 8.0;
 		return twist;
@@ -102,7 +103,7 @@ TEST_F(PandaMoveRelative, cartesianCircular) {
 	auto offset = Eigen::Translation3d(0, 0, 0.1);
 	move->setIKFrame(offset, tip);
 	move->setDirection([] {
-		geometry_msgs::TwistStamped twist;
+		geometry_msgs::msg::TwistStamped twist;
 		twist.header.frame_id = "world";
 		twist.twist.angular.x = TAU / 4.0;
 		return twist;
@@ -118,7 +119,7 @@ TEST_F(PandaMoveRelative, cartesianRotateAttachedIKFrame) {
 	move->setIKFrame(attached_object);
 
 	move->setDirection([] {
-		geometry_msgs::TwistStamped twist;
+		geometry_msgs::msg::TwistStamped twist;
 		twist.header.frame_id = "world";
 		twist.twist.angular.z = TAU / 8.0;
 		return twist;
@@ -130,9 +131,7 @@ TEST_F(PandaMoveRelative, cartesianRotateAttachedIKFrame) {
 
 int main(int argc, char** argv) {
 	testing::InitGoogleTest(&argc, argv);
-	ros::init(argc, argv, "move_relative_test");
-	ros::AsyncSpinner spinner(1);
-	spinner.start();
+	rclcpp::init(argc, argv);
 
 	return RUN_ALL_TESTS();
 }

@@ -14,36 +14,38 @@ permissions:
   id-token: write
 
 jobs:
-  ici:
+  default:
     strategy:
       fail-fast: false
       matrix:
         env:
-          - IMAGE: master-source
-            TARGET_CMAKE_ARGS: >-
-              -DCMAKE_BUILD_TYPE=Release
-              -DCMAKE_CXX_FLAGS="-Werror -Wall -Wextra -Wwrite-strings -Wunreachable-code -Wpointer-arith -Wredundant-decls"
-          - IMAGE: noetic-source
+          - IMAGE: humble-source
+          - IMAGE: rolling-source
             NAME: ccov
             TARGET_CMAKE_ARGS: -DCMAKE_BUILD_TYPE=Debug -DCMAKE_CXX_FLAGS="--coverage"
-          - IMAGE: noetic-source
-            CLANG_TIDY: true
-            TARGET_CMAKE_ARGS: >-
-              -DCMAKE_BUILD_TYPE=Release
-              -DCMAKE_CXX_FLAGS="-Werror -Wall -Wextra -Wwrite-strings -Wunreachable-code -Wpointer-arith -Wredundant-decls -Wold-style-cast"
-          - IMAGE: noetic-source
+          - IMAGE: rolling-source
+            CLANG_TIDY: pedantic
+          - IMAGE: rolling-source
             NAME: asan
+            # Add fast_unwind_on_malloc=0 to fix stacktraces being too short or do not make sense
+            # see https://github.com/google/sanitizers/wiki/AddressSanitizer
+            # Disable alloc/dealloc mismatch warnings: https://github.com/ros2/rclcpp/pull/1324
             DOCKER_RUN_OPTS: >-
               -e PRELOAD=libasan.so.5
-              -e LSAN_OPTIONS="suppressions=$PWD/.github/workflows/lsan.suppressions"
-            TARGET_CMAKE_ARGS: -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_FLAGS="-fsanitize=address -fno-omit-frame-pointer -O1 -g"
+              -e LSAN_OPTIONS="suppressions=$PWD/.github/workflows/lsan.suppressions,fast_unwind_on_malloc=0"
+              -e ASAN_OPTIONS="new_delete_type_mismatch=0,alloc_dealloc_mismatch=0"
+            TARGET_CMAKE_ARGS: -DCMAKE_CXX_FLAGS="-fsanitize=address -fno-omit-frame-pointer -O1 -g"
 
     env:
-      CATKIN_LINT: true
       CLANG_TIDY_ARGS: -quiet -export-fixes ${{ github.workspace }}/.work/clang-tidy-fixes.yaml
-      DOCKER_IMAGE: moveit/moveit:${{ matrix.env.IMAGE }}
+      DOCKER_IMAGE: moveit/moveit2:${{ matrix.env.IMAGE }}
       UNDERLAY: /root/ws_moveit/install
-      DOWNSTREAM_WORKSPACE: "github:ubi-agni/mtc_demos#master github:TAMS-Group/mtc_pour#master"
+      # TODO: Port to ROS2
+      # DOWNSTREAM_WORKSPACE: "github:ubi-agni/mtc_demos#master github:TAMS-Group/mtc_pour#master"
+      # Silent googletest warnings: https://github.com/ament/ament_cmake/pull/408#issuecomment-1306004975
+      UPSTREAM_WORKSPACE: github:ament/googletest#clalancette/update-to-gtest-1.11
+      AFTER_SETUP_UPSTREAM_WORKSPACE: dpkg --purge --force-all ros-rolling-gtest-vendor ros-rolling-gmock-vendor
+      TARGET_CMAKE_ARGS: -DCMAKE_BUILD_TYPE=Release
       CCACHE_DIR: ${{ github.workspace }}/.ccache
       BASEDIR: ${{ github.workspace }}/.work
       CACHE_PREFIX: "${{ matrix.env.IMAGE }}${{ contains(matrix.env.TARGET_CMAKE_ARGS, '--coverage') && '-ccov' || '' }}"
@@ -52,7 +54,7 @@ jobs:
       CC: ${{ matrix.env.CLANG_TIDY && 'clang' }}
       CXX: ${{ matrix.env.CLANG_TIDY && 'clang++' }}
 
-    name: "${{ matrix.env.IMAGE }}${{ matrix.env.NAME && ' • ' || ''}}${{ matrix.env.NAME }}${{ matrix.env.CATKIN_LINT && ' • catkin_lint' || ''}}${{ matrix.env.CLANG_TIDY && ' • clang-tidy' || '' }}"
+    name: "${{ matrix.env.IMAGE }}${{ matrix.env.NAME && ' • ' || ''}}${{ matrix.env.NAME }}${{ matrix.env.CLANG_TIDY && ' • clang-tidy' || '' }}"
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
@@ -113,54 +115,3 @@ jobs:
         if: contains(matrix.env.TARGET_CMAKE_ARGS, '--coverage') && steps.ici.outputs.target_test_results == '0'
         with:
           files: ${{ env.BASEDIR }}/target_ws/coverage.info
-
-  doc:
-    # https://devblogs.microsoft.com/cppblog/clear-functional-c-documentation-with-sphinx-breathe-doxygen-cmake
-    if: github.repository_owner == 'ros-planning'
-    runs-on: ubuntu-latest
-    needs: ici
-    container:
-      image: moveit/moveit:noetic-source
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v3
-      - name: Setup Pages
-        uses: actions/configure-pages@v2
-
-      - name: Install dependencies
-        run: |
-          apt-get update -q
-          apt-get install -y doxygen graphviz python3-pip
-          pip install -r core/doc/requirements.txt
-
-      - name: Download ICI workspace
-        uses: rhaschke/download-ici-workspace@main
-
-      - name: Build Documentation
-        shell: bash
-        run: |
-          source ici/setup.bash
-          (cd core/doc; doxygen)
-          sphinx-build core/doc _site
-      - name: Validate links
-        if: false
-        shell: bash
-        run: |
-          source ici/setup.bash
-          sphinx-build -W -b linkcheck core/doc _site
-
-      - name: Upload pages artifact
-        uses: actions/upload-pages-artifact@v1
-
-  # Deployment job
-  deploy:
-    if: github.repository_owner == 'ros-planning' && github.ref == 'refs/heads/master'
-    runs-on: ubuntu-latest
-    needs: doc
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
-    steps:
-      - name: Deploy to GitHub Pages
-        id: deployment
-        uses: actions/deploy-pages@v1

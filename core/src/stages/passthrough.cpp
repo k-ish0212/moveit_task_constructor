@@ -47,7 +47,6 @@
 #include <chrono>
 #include <functional>
 #include <iterator>
-#include <ros/console.h>
 
 namespace moveit {
 namespace task_constructor {
